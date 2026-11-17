@@ -2,17 +2,21 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
+import requests
+
+# URL de tu Web App de Google Apps Script recién creada
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzXqhUz0Lg4kSf0fc58eoi_d3jNpmzhBdYH5dEw678IuGlLZ5N2EZvf3QF_k3eSa4Jq6A/exec"
 
 def run():
     st.header("🛒 Punto de Venta (POS) - Estribos Bemon")
     st.caption("Registra ventas confirmadas y sincroniza en tiempo real con Google Sheets.")
 
-    # Conexión a la base de datos en la nube
+    # Conexión para leer los datos (esta parte ya te funcionaba perfecto)
     conn = st.connection("gsheets", type=GSheetsConnection)
 
     # Leer costo actual de materia prima desde la pestaña Configuracion
     try:
-        df_config = conn.read(worksheet="Configuracion")
+        df_config = conn.read(worksheet="Configuracion", ttl=0)
         costo_base_kg = float(df_config["Costo_Kilo_Alambron"].iloc[0])
     except Exception:
         costo_base_kg = 18.50  # Valor base por defecto
@@ -42,24 +46,23 @@ def run():
         if not cliente:
             st.error("Por favor ingresa el nombre del cliente.")
         else:
-            nueva_venta = pd.DataFrame([{
-                "Folio": folio,
+            # Estructura del paquete que enviamos por POST a tu Apps Script
+            payload = {
+                "Folio": int(folio),
                 "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "Cliente": cliente,
-                "Total_KG": total_kg,
-                "Total_Venta": total_venta,
+                "Total_KG": float(total_kg),
+                "Total_Venta": float(total_venta),
                 "Metodo_Pago": metodo_pago,
-                "Utilidad_Neta": round(utilidad_estimada, 2)
-            }])
+                "Utilidad_Neta": round(float(utilidad_estimada), 2)
+            }
 
-            # Leer datos actuales, concatenar y actualizar Google Sheets
             try:
-                datos_previos = conn.read(worksheet="Ventas", ttl=0)
+                # Envía los datos directamente a la hoja "Ventas" mediante tu Web App segura
+                response = requests.post(WEB_APP_URL, json=payload)
+                if response.status_code == 200:
+                    st.success(f"¡Venta Folio #{folio} registrada y guardada en la nube con éxito!")
+                else:
+                    st.error(f"Error al sincronizar con la hoja: {response.text}")
             except Exception as e:
-                st.error(f"Error al conectar con la pestaña Ventas: {e}")
-                datos_previos = pd.DataFrame()
-
-            df_actualizado = pd.concat([datos_previos, nueva_venta], ignore_index=True)
-            conn.update(worksheet="Ventas", data=df_actualizado)
-            
-            st.success(f"¡Venta Folio #{folio} registrada y guardada en la nube!")
+                st.error(f"Error de conexión: {e}")
