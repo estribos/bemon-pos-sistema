@@ -54,10 +54,11 @@ def run():
 
             # Leer datos actuales, concatenar y actualizar Google Sheets
             try:
-    datos_previos = conn.read(worksheet="Ventas", ttl=0)
-except Exception as e:
-    st.error(f"Error al conectar con la pestaña Ventas: {e}")
-    datos_previos = pd.DataFrame()
+                datos_previos = conn.read(worksheet="Ventas", ttl=0)
+            except Exception as e:
+                st.error(f"Error al conectar con la pestaña Ventas: {e}")
+                datos_previos = pd.DataFrame()
+
             df_actualizado = pd.concat([datos_previos, nueva_venta], ignore_index=True)
             conn.update(worksheet="Ventas", data=df_actualizado)
             
