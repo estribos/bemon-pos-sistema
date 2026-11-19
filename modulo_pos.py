@@ -6,16 +6,6 @@ import requests
 
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzK0ME259N9f8vWAc6h-eDtKUlDypFPNMgT7S7YjKeehaoj-OKyq6T8Is-8xwUWv7L4/exec"
 
-MEDIDAS_ESTRIBO = [
-    "Estribo 10x10 cm",
-    "Estribo 10x15 cm",
-    "Estribo 10x20 cm",
-    "Estribo 15x20 cm",
-    "Estribo 15x25 cm",
-    "Estribo 20x20 cm",
-    "Castillo / Armex / Especial",
-]
-
 MESES_ES = {
     1: "ENERO", 2: "FEBRERO", 3: "MARZO", 4: "ABRIL",
     5: "MAYO", 6: "JUNIO", 7: "JULIO", 8: "AGOSTO",
@@ -84,12 +74,11 @@ def _calcular_top_medidas(df_norm: pd.DataFrame, top_n: int = 3) -> list[tuple[s
         texto = str(row.get("_medidas", "")).strip()
         if not texto:
             continue
-        # Espera formato tipo: "Estribo 10x15 cm: 45.0 kg ($1,350) | Estribo 10x10 cm: 20.0 kg ($600)"
         for parte in texto.split("|"):
             parte = parte.strip()
             if ":" in parte and "kg" in parte.lower():
                 nombre_med, resto = parte.split(":", 1)
-                nombre_med = nombre_med.strip()
+                nombre_med = nombre_med.strip().upper()
                 kg_str = resto.lower().split("kg")[0].strip().split()[-1] if "kg" in resto.lower() else "0"
                 try:
                     kg_val = float(kg_str.replace(",", ""))
@@ -115,10 +104,10 @@ def run():
         st.session_state.ultimo_folio_enviado = None
     if "partidas_nota" not in st.session_state:
         st.session_state.partidas_nota = [
-            {"medida": "Estribo 10x15 cm", "kg": 0.0, "importe": 0.0}
+            {"medida": "", "kg": 0.0, "importe": 0.0}
         ]
 
-    # --- RESUMEN DIARIO, MENSUAL Y UTILIDAD (ESTILO INICIO) ---
+    # --- RESUMEN DIARIO, MENSUAL Y UTILIDAD ---
     hoy = datetime.now().date()
     hace_7_dias = hoy - timedelta(days=7)
 
@@ -154,7 +143,7 @@ def run():
     st.subheader("📐 Desglose por Medida de Estribo")
     c_add, c_clr = st.columns([1, 1])
     if c_add.button("➕ Agregar medida"):
-        st.session_state.partidas_nota.append({"medida": "Estribo 10x10 cm", "kg": 0.0, "importe": 0.0})
+        st.session_state.partidas_nota.append({"medida": "", "kg": 0.0, "importe": 0.0})
         st.rerun()
     if len(st.session_state.partidas_nota) > 1 and c_clr.button("🗑️ Quitar última medida"):
         st.session_state.partidas_nota.pop()
@@ -166,12 +155,12 @@ def run():
 
     for idx, partida in enumerate(st.session_state.partidas_nota):
         p1, p2, p3 = st.columns([2.2, 1.4, 1.4])
-        med_sel = p1.selectbox(
+        med_sel = p1.text_input(
             f"Medida #{idx + 1}",
-            MEDIDAS_ESTRIBO,
-            index=MEDIDAS_ESTRIBO.index(partida["medida"]) if partida["medida"] in MEDIDAS_ESTRIBO else 0,
+            value=str(partida.get("medida", "")),
+            placeholder="Ej. 10x15 cm, 12x20 cm, castillo 15x15...",
             key=f"med_{idx}",
-        )
+        ).strip()
         kg_val = p2.number_input(
             f"Kilos (kg) #{idx + 1}",
             min_value=0.0,
@@ -189,8 +178,9 @@ def run():
         st.session_state.partidas_nota[idx] = {"medida": med_sel, "kg": kg_val, "importe": imp_val}
         total_kg_nota += kg_val
         total_venta_nota += imp_val
-        if kg_val > 0 or imp_val > 0:
-            resumen_partidas.append(f"{med_sel}: {kg_val:.2f} kg (${imp_val:,.2f})")
+        if kg_val > 0 or imp_val > 0 or med_sel:
+            etiqueta_med = med_sel if med_sel else f"Medida {idx + 1}"
+            resumen_partidas.append(f"{etiqueta_med}: {kg_val:.2f} kg (${imp_val:,.2f})")
 
     costo_material_total = total_kg_nota * costo_base_kg
     utilidad_estimada = total_venta_nota - costo_material_total
@@ -225,7 +215,7 @@ def run():
         if not cliente_limpio:
             errores.append("Ingresa el nombre del cliente o constructora.")
         if total_kg_nota <= 0:
-            errores.append("Captura al menos una medida con kilogramos mayores a 0.")
+            errores.append("Captura al menos una partida con kilogramos mayores a 0.")
         if total_venta_nota <= 0:
             errores.append("El importe total de la venta debe ser mayor a $0.00 MXN.")
         if int(folio) == st.session_state.ultimo_folio_enviado:
@@ -259,7 +249,7 @@ def run():
                     if data_resp.get("status") == "ok":
                         st.session_state.ultimo_folio_enviado = int(folio)
                         st.session_state.partidas_nota = [
-                            {"medida": "Estribo 10x15 cm", "kg": 0.0, "importe": 0.0}
+                            {"medida": "", "kg": 0.0, "importe": 0.0}
                         ]
                         st.cache_data.clear()
                         st.success(f"¡Venta Folio #{int(folio)} registrada y sincronizada con éxito!")
@@ -271,7 +261,7 @@ def run():
             except Exception as e:
                 st.error(f"Error de conexión: {e}")
 
-    # --- CONCENTRADO MENSUAL (ESTILO VENTAS MENSUALES) ---
+    # --- CONCENTRADO MENSUAL ---
     st.divider()
     st.subheader("📅 Concentrado de Ventas Mensuales")
     if not df_norm.empty and "_dt" in df_norm.columns and df_norm["_dt"].notna().any():
