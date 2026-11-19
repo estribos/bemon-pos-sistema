@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from streamlit_gsheets import GSheetsConnection
 import requests
 
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxAOk4gcRrrwJ_Jw37OAt2M44OAVjjyDsw-YAo6o5Gk1YH22pZ19HJN1n_QYvuhEwmP/exec"
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxAOk4gcRrrwJ_Jw37OAt2M440AVjjyDsw-YAo6o5Gk1YH22pZ19HJN1n_QYvuhEwmP/exec"
 MESES_ES = {
     1: "ENERO", 2: "FEBRERO", 3: "MARZO", 4: "ABRIL",
     5: "MAYO", 6: "JUNIO", 7: "JULIO", 8: "AGOSTO",
@@ -73,17 +73,15 @@ def _calcular_top_medidas(df_norm: pd.DataFrame, top_n: int = 3) -> list[tuple[s
         texto = str(row.get("_medidas", "")).strip()
         if not texto:
             continue
-        for parte in texto.split("|"):
-            parte = parte.strip()
-            if ":" in parte and "kg" in parte.lower():
-                nombre_med, resto = parte.split(":", 1)
-                nombre_med = nombre_med.strip().upper()
-                kg_str = resto.lower().split("kg")[0].strip().split()[-1] if "kg" in resto.lower() else "0"
-                try:
-                    kg_val = float(kg_str.replace(",", ""))
-                    acumulado[nombre_med] = acumulado.get(nombre_med, 0.0) + kg_val
-                except ValueError:
-                    pass
+        kilos_fila = float(row.get("_kg", 0.0) or 0.0)
+        partes = [p.strip().upper() for p in texto.split("|") if p.strip()]
+        if not partes:
+            continue
+        peso_por_medida = kilos_fila / len(partes) if kilos_fila > 0 else 0.0
+        for nombre_med in partes:
+            nombre_limpio = nombre_med.split(":", 1)[0].strip()
+            if nombre_limpio:
+                acumulado[nombre_limpio] = acumulado.get(nombre_limpio, 0.0) + peso_por_medida
     ordenado = sorted(acumulado.items(), key=lambda x: x[1], reverse=True)
     return ordenado[:top_n]
 
@@ -179,7 +177,7 @@ def run():
         total_venta_nota += imp_val
         if kg_val > 0 or imp_val > 0 or med_sel:
             etiqueta_med = med_sel if med_sel else f"Medida {idx + 1}"
-            resumen_partidas.append(f"{etiqueta_med}: {kg_val:.2f} kg (${imp_val:,.2f})")
+            resumen_partidas.append(etiqueta_med)
 
     costo_material_total = total_kg_nota * costo_base_kg
     utilidad_estimada = total_venta_nota - costo_material_total
