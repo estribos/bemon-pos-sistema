@@ -4,14 +4,14 @@ from datetime import datetime
 from streamlit_gsheets import GSheetsConnection
 import requests
 
-# URL de tu Web App de Google Apps Script recién creada
-WEB_APP_URL = https://script.google.com/macros/s/AKfycbzK0ME259N9f8vWAc6h-eDtKUlDypFPNMgT7S7YjKeehaoj-OKyq6T8Is-8xwUWv7L4/exec
+# URL de tu Web App de Google Apps Script recién creada (SIEMPRE entre comillas)
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzK0ME259N9f8vWAc6h-eDtKUlDypFPNMgT7S7YjKeehaoj-OKyq6T8Is-8xwUWv7L4/exec"
 
 def run():
     st.header("🛒 Punto de Venta (POS) - Estribos Bemon")
     st.caption("Registra ventas confirmadas y sincroniza en tiempo real con Google Sheets.")
 
-    # Conexión para leer los datos (esta parte ya te funcionaba perfecto)
+    # Conexión para leer los datos
     conn = st.connection("gsheets", type=GSheetsConnection)
 
     # Leer costo actual de materia prima desde la pestaña Configuracion
@@ -46,7 +46,6 @@ def run():
         if not cliente:
             st.error("Por favor ingresa el nombre del cliente.")
         else:
-            # Estructura del paquete que enviamos por POST a tu Apps Script
             payload = {
                 "Folio": int(folio),
                 "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -58,11 +57,14 @@ def run():
             }
 
             try:
-                # Envía los datos directamente a la hoja "Ventas" mediante tu Web App segura
-                response = requests.post(WEB_APP_URL, json=payload)
+                response = requests.post(WEB_APP_URL, json=payload, timeout=20)
                 if response.status_code == 200:
-                    st.success(f"¡Venta Folio #{folio} registrada y guardada en la nube con éxito!")
+                    data_resp = response.json()
+                    if data_resp.get("status") == "ok":
+                        st.success(f"¡Venta Folio #{folio} registrada y guardada en la nube con éxito!")
+                    else:
+                        st.error(f"Apps Script devolvió error: {data_resp.get('message')}")
                 else:
-                    st.error(f"Error al sincronizar con la hoja: {response.text}")
+                    st.error(f"Error al sincronizar con la hoja (HTTP {response.status_code}): {response.text}")
             except Exception as e:
                 st.error(f"Error de conexión: {e}")
