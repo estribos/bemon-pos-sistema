@@ -5,7 +5,7 @@ from streamlit_gsheets import GSheetsConnection
 import requests
 
 # URL de tu Web App de Google Apps Script recién creada
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzXqhUz0Lg4kSf0fc58eoi_d3jNpmzhBdYH5dEw678IuGlLZ5N2EZvf3QF_k3eSa4Jq6A/exec"
+WEB_APP_URL = https://script.google.com/macros/s/AKfycbzK0ME259N9f8vWAc6h-eDtKUlDypFPNMgT7S7YjKeehaoj-OKyq6T8Is-8xwUWv7L4/exec
 
 def run():
     st.header("🛒 Punto de Venta (POS) - Estribos Bemon")
