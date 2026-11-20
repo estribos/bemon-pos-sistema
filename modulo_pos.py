@@ -103,11 +103,11 @@ def run():
 
     if st.session_state.ventas_sesion:
         df_sesion = pd.DataFrame(st.session_state.ventas_sesion)
-        df_sesion["_dt"] = pd.to_datetime(df_sesion["Fecha"], errors="coerce")
-        df_sesion["_kg"] = pd.to_numeric(df_sesion["Total_KG"], errors="coerce").fillna(0.0)
-        df_sesion["_venta"] = pd.to_numeric(df_sesion["Total_Venta"], errors="coerce").fillna(0.0)
-        df_sesion["_util"] = pd.to_numeric(df_sesion["Utilidad_Neta"], errors="coerce").fillna(0.0)
-        df_sesion["_medidas"] = df_sesion["Medidas"].fillna("").astype(str)
+        df_sesion["_dt"] = pd.to_datetime(df_sesion.get("Fecha"), errors="coerce")
+        df_sesion["_kg"] = pd.to_numeric(df_sesion.get("Total_KG"), errors="coerce").fillna(0.0)
+        df_sesion["_venta"] = pd.to_numeric(df_sesion.get("Total_Venta"), errors="coerce").fillna(0.0)
+        df_sesion["_util"] = pd.to_numeric(df_sesion.get("Utilidad_Neta"), errors="coerce").fillna(0.0)
+        df_sesion["_medidas"] = df_sesion.get("Medidas", pd.Series("", index=df_sesion.index)).fillna("").astype(str)
         df_norm = pd.concat([df_norm, df_sesion], ignore_index=True)
 
     folio_sheet = _obtener_siguiente_folio(df_raw)
@@ -325,9 +325,8 @@ def run():
     if st.session_state.ventas_sesion:
         st.divider()
         st.subheader("🧾 Ventas Registradas en la App")
-        df_vista_sesion = pd.DataFrame(st.session_state.ventas_sesion)[
-            ["Folio", "Fecha", "Cliente", "Medidas", "Kilos_Por_Medida", "Total_KG", "Total_Venta", "Metodo_Pago", "Utilidad_Neta"]
-        ]
+        cols_vista = ["Folio", "Fecha", "Cliente", "Medidas", "Kilos_Por_Medida", "Total_KG", "Total_Venta", "Metodo_Pago", "Utilidad_Neta"]
+        df_vista_sesion = pd.DataFrame(st.session_state.ventas_sesion).reindex(columns=cols_vista).fillna("")
         st.dataframe(df_vista_sesion, use_container_width=True, hide_index=True)
 
     # --- CONCENTRADO MENSUAL ---
