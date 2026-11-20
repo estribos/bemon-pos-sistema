@@ -24,17 +24,6 @@ def _cargar_ventas(conn: GSheetsConnection) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def _cargar_resumen_mensual(conn: GSheetsConnection) -> pd.DataFrame:
-    try:
-        df = conn.read(worksheet="Resumen_Mensual", ttl=0)
-        if df is None or df.empty:
-            return pd.DataFrame()
-        df.columns = [str(c).strip().lower() for c in df.columns]
-        return df.dropna(how="all").reset_index(drop=True)
-    except Exception:
-        return pd.DataFrame()
-
-
 def _parsear_fechas_serie(serie: pd.Series) -> pd.Series:
     s_str = serie.astype(str).str.strip()
     s_str = s_str.replace({"": pd.NA, "nan": pd.NA, "NaT": pd.NA, "None": pd.NA})
@@ -111,24 +100,6 @@ def _calcular_top_medidas(df_norm: pd.DataFrame, top_n: int = 3) -> list[tuple[s
     return ordenado[:top_n]
 
 
-def _respaldo_mes_desde_resumen(df_resumen: pd.DataFrame, anio: int, mes_num: int) -> tuple[float, float, float]:
-    if df_resumen.empty:
-        return 0.0, 0.0, 0.0
-    if "anio" not in df_resumen.columns or "mes_num" not in df_resumen.columns:
-        return 0.0, 0.0, 0.0
-
-    a_col = pd.to_numeric(df_resumen["anio"], errors="coerce")
-    m_col = pd.to_numeric(df_resumen["mes_num"], errors="coerce")
-    fila = df_resumen[(a_col == anio) & (m_col == mes_num)]
-    if fila.empty:
-        return 0.0, 0.0, 0.0
-
-    kg_sum = float(pd.to_numeric(fila.get("total_kg", 0), errors="coerce").fillna(0.0).sum())
-    venta_sum = float(pd.to_numeric(fila.get("total_venta", 0), errors="coerce").fillna(0.0).sum())
-    util_sum = float(pd.to_numeric(fila.get("utilidad_neta", 0), errors="coerce").fillna(0.0).sum())
-    return kg_sum, venta_sum, util_sum
-
-
 def run():
     st.header("🛒 Punto de Venta (POS) - Estribos Colima Bemon")
     st.caption("Captura por medida, control diario/mensual de ventas y utilidad, y sincronización con Google Sheets.")
@@ -141,7 +112,6 @@ def run():
 
     df_raw = _cargar_ventas(conn)
     df_norm = _normalizar_ventas(df_raw)
-    df_resumen = _cargar_resumen_mensual(conn)
     folio_sugerido = _obtener_siguiente_folio(df_raw)
 
     if "ultimo_folio_enviado" not in st.session_state:
@@ -151,7 +121,6 @@ def run():
             {"medida": "", "kg": 0.0, "importe": 0.0}
         ]
 
-    # --- RESUMEN DIARIO, MENSUAL Y UTILIDAD ---
     hoy = datetime.now().date()
     hace_7_dias = hoy - timedelta(days=7)
 
@@ -171,13 +140,6 @@ def run():
     else:
         venta_hoy = kg_hoy = venta_mes = kg_mes = util_mes = util_sem = 0.0
 
-    if venta_mes == 0.0 and kg_mes == 0.0 and util_mes == 0.0:
-        r_kg, r_venta, r_util = _respaldo_mes_desde_resumen(df_resumen, hoy.year, hoy.month)
-        if r_venta > 0 or r_kg > 0 or r_util != 0.0:
-            kg_mes = r_kg
-            venta_mes = r_venta
-            util_mes = r_util
-
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Ventas de Hoy", f"${venta_hoy:,.2f}", f"{kg_hoy:,.1f} kg hoy")
     m2.metric(f"Ventas {MESES_ES[hoy.month]}", f"${venta_mes:,.2f}", f"{kg_mes:,.1f} kg en el mes")
@@ -191,7 +153,6 @@ def run():
 
     st.divider()
 
-    # --- COSTO DEL KILO DE ALAMBRÓN (AJUSTABLE EN VENTA) ---
     c_costo1, c_costo2 = st.columns([1.5, 3.5])
     costo_base_kg = float(
         c_costo1.number_input(
@@ -209,7 +170,6 @@ def run():
         f"(Sugerido inicial: ${costo_inicial_kg:,.2f}/kg desde {origen_costo})"
     )
 
-    # --- DESGLOSE POR MEDIDA DE LA VENTA ACTUAL ---
     st.subheader("📐 Desglose por Medida de Estribo")
     c_add, c_clr = st.columns([1, 1])
     if c_add.button("➕ Agregar medida"):
@@ -266,7 +226,6 @@ def run():
     if total_venta_nota > 0 and utilidad_estimada < 0:
         st.warning("⚠️ Esta venta arroja **utilidad neta negativa** con el costo de alambrón configurado.")
 
-    # --- DATOS DEL CLIENTE Y CONFIRMACIÓN ---
     with st.form("form_pos_venta", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
@@ -331,7 +290,6 @@ def run():
             except Exception as e:
                 st.error(f"Error de conexión: {e}")
 
-    # --- CONCENTRADO MENSUAL ---
     st.divider()
     st.subheader("📅 Concentrado de Ventas Mensuales")
     if not df_norm.empty and "_dt" in df_norm.columns and df_norm["_dt"].notna().any():
