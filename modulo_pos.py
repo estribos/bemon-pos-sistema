@@ -3,8 +3,10 @@ import pandas as pd
 from datetime import datetime, timedelta
 from streamlit_gsheets import GSheetsConnection
 import requests
+from io import StringIO
 
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxRTytCF4E2gnnb2iDc3Rw8-ZN1uOTB8S1dOLRn2dWMn9rVohgldv-uMiNKmCQCapWf/exec"
+SPREADSHEET_ID = "13YyF4ZV967z7LhKGevdi49UaO1AX6MamjcDcfxVObO4"
 MESES_ES = {
     1: "ENERO", 2: "FEBRERO", 3: "MARZO", 4: "ABRIL",
     5: "MAYO", 6: "JUNIO", 7: "JULIO", 8: "AGOSTO",
@@ -14,15 +16,32 @@ MESES_ES = {
 
 def _cargar_ventas(conn: GSheetsConnection) -> tuple[pd.DataFrame, str | None]:
     try:
-        df = conn.read(worksheet="Ventas", ttl=0)
-        if df is None or df.empty:
-            return pd.DataFrame(), None
-        df.columns = [str(c).strip() for c in df.columns]
-        # Eliminar filas completamente vacías
-        df = df.dropna(how="all").reset_index(drop=True)
-        return df, None
-    except Exception as e:
-        return pd.DataFrame(), f"Error leyendo 'Ventas': {e}"
+        df = conn.read(worksheet="Ventas", ttl=60)
+        if df is not None and not df.empty:
+            df.columns = [str(c).strip() for c in df.columns]
+            df = df.dropna(how="all").reset_index(drop=True)
+            return df, None
+    except Exception as e_conn:
+        err_conn = str(e_conn)
+    else:
+        err_conn = None
+
+    # Respaldo por consulta gviz CSV de la hoja
+    try:
+        url_csv = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=Ventas"
+        resp = requests.get(url_csv, timeout=15)
+        if resp.status_code == 200 and resp.text.strip():
+            df_csv = pd.read_csv(StringIO(resp.text))
+            if df_csv is not None and not df_csv.empty:
+                df_csv.columns = [str(c).strip() for c in df_csv.columns]
+                df_csv = df_csv.dropna(how="all").reset_index(drop=True)
+                return df_csv, None
+    except Exception:
+        pass
+
+    if err_conn:
+        return pd.DataFrame(), f"Error leyendo 'Ventas': {err_conn}"
+    return pd.DataFrame(), None
 
 
 def _parsear_fechas_serie(serie: pd.Series) -> pd.Series:
@@ -56,7 +75,6 @@ def _normalizar_ventas(df: pd.DataFrame) -> pd.DataFrame:
     out["_util"] = pd.to_numeric(out[c_util], errors="coerce").fillna(0.0) if c_util else 0.0
     out["_medidas"] = out[c_med].fillna("").astype(str) if c_med else ""
 
-    # Filtrar filas fantasma sin fecha, sin kilos y sin venta
     tiene_dato = (out["_dt"].notna()) | (out["_kg"] > 0) | (out["_venta"] > 0)
     return out.loc[tiene_dato].reset_index(drop=True)
 
@@ -73,7 +91,7 @@ def _obtener_siguiente_folio(df: pd.DataFrame) -> int:
 
 def _obtener_costo_kilo(conn: GSheetsConnection) -> tuple[float, str]:
     try:
-        df_config = conn.read(worksheet="Configuracion", ttl=0)
+        df_config = conn.read(worksheet="Configuracion", ttl=60)
         if df_config is not None and not df_config.empty and "Costo_Kilo_Alambron" in df_config.columns:
             valor = float(pd.to_numeric(df_config["Costo_Kilo_Alambron"], errors="coerce").dropna().iloc[0])
             if valor > 0:
