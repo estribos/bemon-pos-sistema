@@ -178,4 +178,201 @@ def run():
     c_add, c_clr = st.columns([1, 1])
     if c_add.button("➕ Agregar medida"):
         st.session_state.partidas_nota.append(
-            {"medida": "", "kg": 0.0, "precio
+            {"medida": "", "kg": 0.0, "precio_kg": 25.0, "importe": 0.0}
+        )
+        st.rerun()
+    if len(st.session_state.partidas_nota) > 1 and c_clr.button("🗑️ Quitar última medida"):
+        st.session_state.partidas_nota.pop()
+        st.rerun()
+
+    total_kg_nota = 0.0
+    total_venta_nota = 0.0
+    resumen_partidas = []
+    kilos_por_medida = []
+
+    for idx, partida in enumerate(st.session_state.partidas_nota):
+        p1, p2, p3, p4 = st.columns([2.0, 1.1, 1.2, 1.2])
+        med_sel = p1.text_input(
+            f"Medida #{idx + 1}",
+            value=str(partida.get("medida", "")),
+            placeholder="Ej. 10x15 cm, 12x20 cm, castillo 15x15...",
+            key=f"med_{idx}",
+        ).strip()
+        kg_val = p2.number_input(
+            f"Kilos (kg) #{idx + 1}",
+            min_value=0.0,
+            value=float(partida.get("kg", 0.0)),
+            step=1.0,
+            key=f"kg_{idx}",
+        )
+        precio_kg_val = p3.number_input(
+            f"Precio/kg ($ MXN) #{idx + 1}",
+            min_value=0.0,
+            value=float(partida.get("precio_kg", 25.0)),
+            step=0.50,
+            format="%.2f",
+            key=f"pkg_{idx}",
+        )
+        imp_val = round(kg_val * precio_kg_val, 2)
+        p4.metric(f"Importe #{idx + 1}", f"${imp_val:,.2f}")
+
+        st.session_state.partidas_nota[idx] = {
+            "medida": med_sel,
+            "kg": kg_val,
+            "precio_kg": precio_kg_val,
+            "importe": imp_val,
+        }
+        total_kg_nota = round(total_kg_nota + kg_val, 3)
+        total_venta_nota = round(total_venta_nota + imp_val, 2)
+        if kg_val > 0 or imp_val > 0 or med_sel:
+            etiqueta_med = (med_sel if med_sel else f"Medida {idx + 1}").upper()
+            resumen_partidas.append(etiqueta_med)
+            kilos_por_medida.append(f"{etiqueta_med}={kg_val:g}kg")
+
+    kilos_por_medida_txt = ", ".join(kilos_por_medida)
+
+    costo_material_total = total_kg_nota * costo_base_kg
+    utilidad_estimada = total_venta_nota - costo_material_total
+    margen_porcentaje = (utilidad_estimada / total_venta_nota * 100) if total_venta_nota > 0 else 0.0
+    precio_prom_kg = (total_venta_nota / total_kg_nota) if total_kg_nota > 0 else 0.0
+
+    st.info(
+        f"📦 **Total Kilos:** {total_kg_nota:,.2f} kg | **Cobro Total:** ${total_venta_nota:,.2f} MXN | "
+        f"**Precio prom./kg:** ${precio_prom_kg:,.2f} | **Costo Alambrón (@ ${costo_base_kg:,.2f}/kg):** ${costo_material_total:,.2f} | "
+        f"**Utilidad Neta:** ${utilidad_estimada:,.2f} ({margen_porcentaje:.1f}%)"
+    )
+    if kilos_por_medida_txt:
+        st.caption(f"⚖️ **Kilos por medida:** {kilos_por_medida_txt}")
+
+    if total_venta_nota > 0 and utilidad_estimada < 0:
+        st.warning("⚠️ Esta venta arroja **utilidad neta negativa** con el costo de alambrón configurado.")
+
+    # --- DATOS DEL CLIENTE Y CONFIRMACIÓN ---
+    with st.form("form_pos_venta", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            folio = st.number_input("Folio de Venta / Nota", min_value=1, value=folio_sugerido, step=1)
+            cliente = st.text_input("Cliente / Constructora", placeholder="Ej. Obra Villas / Ing. Pérez")
+        with col2:
+            metodo_pago = st.selectbox("Método de Pago", ["Efectivo", "Transferencia BANAMEX", "Crédito / Anticipo"])
+            nota_extra = st.text_input("Observación / Obra (opcional)", placeholder="Ej. Entrega en obra o anticipo 50%")
+
+        btn_guardar = st.form_submit_button("✅ Registrar Venta y Sincronizar", use_container_width=True)
+
+    if btn_guardar:
+        cliente_limpio = cliente.strip()
+        errores = []
+
+        if not cliente_limpio:
+            errores.append("Ingresa el nombre del cliente o constructora.")
+        if total_kg_nota <= 0:
+            errores.append("Captura al menos una partida con kilogramos mayores a 0.")
+        if total_venta_nota <= 0:
+            errores.append("El importe total de la venta debe ser mayor a $0.00 MXN.")
+        if int(folio) == st.session_state.ultimo_folio_enviado:
+            errores.append(f"El Folio #{int(folio)} ya fue registrado en esta sesión.")
+
+        if errores:
+            for err in errores:
+                st.error(err)
+            return
+
+        obs_limpia = nota_extra.strip()
+        obs_final = (
+            f"{obs_limpia} | Kilos por medida: {kilos_por_medida_txt}"
+            if obs_limpia and kilos_por_medida_txt
+            else (f"Kilos por medida: {kilos_por_medida_txt}" if kilos_por_medida_txt else obs_limpia)
+        )
+
+        now_dt = datetime.now()
+        payload = {
+            "Folio": int(folio),
+            "Fecha": now_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            "Cliente": cliente_limpio,
+            "Total_KG": round(float(total_kg_nota), 3),
+            "Total_Venta": round(float(total_venta_nota), 2),
+            "Metodo_Pago": metodo_pago,
+            "Utilidad_Neta": round(float(utilidad_estimada), 2),
+            "Medidas": " | ".join(resumen_partidas),
+            "Kilos_Por_Medida": kilos_por_medida_txt,
+            "Observaciones": obs_final,
+            "Anio": now_dt.year,
+            "Mes_Nombre": MESES_ES[now_dt.month],
+        }
+
+        with st.spinner("Sincronizando venta con Google Sheets..."):
+            try:
+                response = requests.post(WEB_APP_URL, json=payload, timeout=20)
+                if response.status_code == 200:
+                    data_resp = response.json()
+                    if data_resp.get("status") == "ok":
+                        st.session_state.ultimo_folio_enviado = int(folio)
+                        st.session_state.ventas_sesion.append(payload)
+                        st.session_state.partidas_nota = [
+                            {"medida": "", "kg": 0.0, "precio_kg": 25.0, "importe": 0.0}
+                        ]
+                        st.cache_data.clear()
+                        st.success(f"¡Venta Folio #{int(folio)} registrada y sincronizada con éxito!")
+                        st.rerun()
+                    else:
+                        st.error(f"Apps Script devolvió error: {data_resp.get('message')}")
+                else:
+                    st.error(f"Error al sincronizar con la hoja (HTTP {response.status_code}): {response.text}")
+            except Exception as e:
+                st.error(f"Error de conexión: {e}")
+
+    # --- REGISTRO EN LA APP ---
+    if st.session_state.ventas_sesion:
+        st.divider()
+        st.subheader("🧾 Ventas Registradas en la App")
+        cols_vista = ["Folio", "Fecha", "Cliente", "Medidas", "Kilos_Por_Medida", "Total_KG", "Total_Venta", "Metodo_Pago", "Utilidad_Neta"]
+        df_vista_sesion = pd.DataFrame(st.session_state.ventas_sesion).reindex(columns=cols_vista).fillna("")
+        st.dataframe(df_vista_sesion, use_container_width=True, hide_index=True)
+
+        c_del1, c_del2, c_del3 = st.columns([2, 1.5, 1.5])
+        folios_disponibles = [
+            f"Folio #{v.get('Folio')} — {v.get('Cliente')} (${float(v.get('Total_Venta', 0)):,.2f})"
+            for v in st.session_state.ventas_sesion
+        ]
+        idx_borrar = c_del1.selectbox(
+            "Selecciona una venta de la tabla para quitar",
+            options=range(len(folios_disponibles)),
+            format_func=lambda i: folios_disponibles[i],
+            key="sel_borrar_venta_sesion",
+        )
+        if c_del2.button("🗑️ Borrar seleccionada", use_container_width=True):
+            borrada = st.session_state.ventas_sesion.pop(idx_borrar)
+            if st.session_state.ultimo_folio_enviado == borrada.get("Folio"):
+                st.session_state.ultimo_folio_enviado = None
+            st.rerun()
+        if c_del3.button("🧹 Limpiar tabla", use_container_width=True):
+            st.session_state.ventas_sesion = []
+            st.session_state.ultimo_folio_enviado = None
+            st.rerun()
+
+    # --- CONCENTRADO MENSUAL ---
+    st.divider()
+    st.subheader("📅 Concentrado de Ventas Mensuales")
+    if not df_norm.empty and "_dt" in df_norm.columns and df_norm["_dt"].notna().any():
+        valid_df = df_norm.dropna(subset=["_dt"]).copy()
+        valid_df["Año"] = valid_df["_dt"].dt.year
+        valid_df["Mes_Num"] = valid_df["_dt"].dt.month
+        valid_df["Mes"] = valid_df["Mes_Num"].map(MESES_ES)
+
+        mensual = (
+            valid_df.groupby(["Año", "Mes_Num", "Mes"], as_index=False)
+            .agg(
+                Kilos_Vendidos=("_kg", "sum"),
+                Ventas_MXN=("_venta", "sum"),
+                Utilidad_MXN=("_util", "sum"),
+                Notas=("_venta", "count"),
+            )
+            .sort_values(["Año", "Mes_Num"], ascending=[False, False])
+        )
+        mensual_vista = mensual[["Año", "Mes", "Notas", "Kilos_Vendidos", "Ventas_MXN", "Utilidad_MXN"]].copy()
+        mensual_vista["Kilos_Vendidos"] = mensual_vista["Kilos_Vendidos"].map(lambda x: f"{x:,.2f} kg")
+        mensual_vista["Ventas_MXN"] = mensual_vista["Ventas_MXN"].map(lambda x: f"${x:,.2f}")
+        mensual_vista["Utilidad_MXN"] = mensual_vista["Utilidad_MXN"].map(lambda x: f"${x:,.2f}")
+        st.dataframe(mensual_vista, use_container_width=True, hide_index=True)
+    else:
+        st.caption("Aún no hay ventas con fecha válida para mostrar el concentrado mensual.")
