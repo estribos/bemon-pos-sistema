@@ -123,7 +123,6 @@ def run():
             {"medida": "", "kg": 0.0, "importe": 0.0}
         ]
 
-    # --- RESUMEN DIARIO, MENSUAL Y UTILIDAD ---
     hoy = datetime.now().date()
     hace_7_dias = hoy - timedelta(days=7)
 
@@ -155,7 +154,6 @@ def run():
 
     st.divider()
 
-    # --- COSTO DEL KILO DE ALAMBRÓN (AJUSTABLE EN VENTA) ---
     c_costo1, c_costo2 = st.columns([1.5, 3.5])
     costo_base_kg = float(
         c_costo1.number_input(
@@ -173,7 +171,6 @@ def run():
         f"(Sugerido inicial: ${costo_inicial_kg:,.2f}/kg desde {origen_costo})"
     )
 
-    # --- DESGLOSE POR MEDIDA DE LA VENTA ACTUAL ---
     st.subheader("📐 Desglose por Medida de Estribo")
     c_add, c_clr = st.columns([1, 1])
     if c_add.button("➕ Agregar medida"):
@@ -223,14 +220,13 @@ def run():
 
     st.info(
         f"📦 **Total Nota:** {total_kg_nota:,.2f} kg | **Cobro Total:** ${total_venta_nota:,.2f} MXN | "
-        f"**Precio prom./kg:** ${precio_prom_kg:,.2f} | **Costo Alambrón (@ ${costo_base_kg:,.2f}/kg):**${costo_material_total:,.2f} | "
+        f"**Precio prom./kg:** ${precio_prom_kg:,.2f} | **Costo Alambrón (@ ${costo_base_kg:,.2f}/kg):** ${costo_material_total:,.2f} | "
         f"**Utilidad Neta:** ${utilidad_estimada:,.2f} ({margen_porcentaje:.1f}%)"
     )
 
     if total_venta_nota > 0 and utilidad_estimada < 0:
         st.warning("⚠️ Esta venta arroja **utilidad neta negativa** con el costo de alambrón configurado.")
 
-    # --- DATOS DEL CLIENTE Y CONFIRMACIÓN ---
     with st.form("form_pos_venta", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
@@ -281,4 +277,51 @@ def run():
                 if response.status_code == 200:
                     data_resp = response.json()
                     if data_resp.get("status") == "ok":
-                        st.session_state.ultimo_folio_enviado = int(
+                        st.session_state.ultimo_folio_enviado = int(folio)
+                        st.session_state.ventas_sesion.append(payload)
+                        st.session_state.partidas_nota = [
+                            {"medida": "", "kg": 0.0, "importe": 0.0}
+                        ]
+                        st.cache_data.clear()
+                        st.success(f"¡Venta Folio #{int(folio)} registrada y sincronizada con éxito!")
+                        st.rerun()
+                    else:
+                        st.error(f"Apps Script devolvió error: {data_resp.get('message')}")
+                else:
+                    st.error(f"Error al sincronizar con la hoja (HTTP {response.status_code}): {response.text}")
+            except Exception as e:
+                st.error(f"Error de conexión: {e}")
+
+    if st.session_state.ventas_sesion:
+        st.divider()
+        st.subheader("🧾 Ventas Registradas en la App")
+        df_vista_sesion = pd.DataFrame(st.session_state.ventas_sesion)[
+            ["Folio", "Fecha", "Cliente", "Medidas", "Total_KG", "Total_Venta", "Metodo_Pago", "Utilidad_Neta"]
+        ]
+        st.dataframe(df_vista_sesion, use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.subheader("📅 Concentrado de Ventas Mensuales")
+    if not df_norm.empty and "_dt" in df_norm.columns and df_norm["_dt"].notna().any():
+        valid_df = df_norm.dropna(subset=["_dt"]).copy()
+        valid_df["Año"] = valid_df["_dt"].dt.year
+        valid_df["Mes_Num"] = valid_df["_dt"].dt.month
+        valid_df["Mes"] = valid_df["Mes_Num"].map(MESES_ES)
+
+        mensual = (
+            valid_df.groupby(["Año", "Mes_Num", "Mes"], as_index=False)
+            .agg(
+                Kilos_Vendidos=("_kg", "sum"),
+                Ventas_MXN=("_venta", "sum"),
+                Utilidad_MXN=("_util", "sum"),
+                Notas=("_venta", "count"),
+            )
+            .sort_values(["Año", "Mes_Num"], ascending=[False, False])
+        )
+        mensual_vista = mensual[["Año", "Mes", "Notas", "Kilos_Vendidos", "Ventas_MXN", "Utilidad_MXN"]].copy()
+        mensual_vista["Kilos_Vendidos"] = mensual_vista["Kilos_Vendidos"].map(lambda x: f"{x:,.2f} kg")
+        mensual_vista["Ventas_MXN"] = mensual_vista["Ventas_MXN"].map(lambda x: f"${x:,.2f}")
+        mensual_vista["Utilidad_MXN"] = mensual_vista["Utilidad_MXN"].map(lambda x: f"${x:,.2f}")
+        st.dataframe(mensual_vista, use_container_width=True, hide_index=True)
+    else:
+        st.caption("Aún no hay ventas con fecha válida para mostrar el concentrado mensual.")
