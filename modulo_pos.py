@@ -12,25 +12,25 @@ MESES_ES = {
 }
 
 
-def _cargar_ventas(conn: GSheetsConnection) -> pd.DataFrame:
+def _cargar_ventas(conn: GSheetsConnection) -> tuple[pd.DataFrame, str | None]:
     try:
         df = conn.read(worksheet="Ventas", ttl=0)
         if df is None or df.empty:
-            return pd.DataFrame()
+            return pd.DataFrame(), None
         df.columns = [str(c).strip() for c in df.columns]
-        return df
-    except Exception:
-        return pd.DataFrame()
+        # Eliminar filas completamente vacías
+        df = df.dropna(how="all").reset_index(drop=True)
+        return df, None
+    except Exception as e:
+        return pd.DataFrame(), f"Error leyendo 'Ventas': {e}"
 
 
 def _parsear_fechas_serie(serie: pd.Series) -> pd.Series:
     s_str = serie.astype(str).str.strip()
     s_str = s_str.replace({"": pd.NA, "nan": pd.NA, "NaT": pd.NA, "None": pd.NA})
 
-    # Intento 1: Parseo estándar de ISO / timestamps
     dt = pd.to_datetime(s_str, errors="coerce")
 
-    # Intento 2: Parseo con formato día primero (DD/MM/YYYY) para las filas que dieron NaT
     mask_na = dt.isna() & s_str.notna()
     if mask_na.any():
         dt.loc[mask_na] = pd.to_datetime(s_str.loc[mask_na], dayfirst=True, errors="coerce")
@@ -42,9 +42,9 @@ def _normalizar_ventas(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
 
-    col_map = {c.lower().strip(): c for c in df.columns}
+    col_map = {str(c).lower().strip(): c for c in df.columns}
     c_fecha = col_map.get("fecha")
-    c_kg = col_map.get("tota_kg") or col_map.get("total_kg")
+    c_kg = col_map.get("total_kg") or col_map.get("tota_kg")
     c_venta = col_map.get("total_venta")
     c_util = col_map.get("utilidad_neta")
     c_med = col_map.get("medidas") or col_map.get("detalle_medidas")
@@ -55,13 +55,16 @@ def _normalizar_ventas(df: pd.DataFrame) -> pd.DataFrame:
     out["_venta"] = pd.to_numeric(out[c_venta], errors="coerce").fillna(0.0) if c_venta else 0.0
     out["_util"] = pd.to_numeric(out[c_util], errors="coerce").fillna(0.0) if c_util else 0.0
     out["_medidas"] = out[c_med].fillna("").astype(str) if c_med else ""
-    return out
+
+    # Filtrar filas fantasma sin fecha, sin kilos y sin venta
+    tiene_dato = (out["_dt"].notna()) | (out["_kg"] > 0) | (out["_venta"] > 0)
+    return out.loc[tiene_dato].reset_index(drop=True)
 
 
 def _obtener_siguiente_folio(df: pd.DataFrame) -> int:
     if df.empty:
         return 1
-    col_folio = next((c for c in df.columns if c.strip().lower() == "folio"), None)
+    col_folio = next((c for c in df.columns if str(c).strip().lower() == "folio"), None)
     if not col_folio:
         return len(df) + 1
     folios_num = pd.to_numeric(df[col_folio], errors="coerce").dropna()
@@ -108,9 +111,12 @@ def run():
     conn = st.connection("gsheets", type=GSheetsConnection)
     costo_base_kg, origen_costo = _obtener_costo_kilo(conn)
 
-    df_raw = _cargar_ventas(conn)
+    df_raw, err_lectura = _cargar_ventas(conn)
+    if err_lectura:
+        st.error(err_lectura)
+
     df_norm = _normalizar_ventas(df_raw)
-    folio_sugerido = _obtener_siguiente_folio(df_raw)
+    folio_sugerido = _obtener_siguiente_folio(df_norm)
 
     if "ultimo_folio_enviado" not in st.session_state:
         st.session_state.ultimo_folio_enviado = None
@@ -124,17 +130,18 @@ def run():
     hace_7_dias = hoy - timedelta(days=7)
 
     if not df_norm.empty and "_dt" in df_norm.columns:
-        mask_hoy = df_norm["_dt"].dt.date == hoy
-        mask_mes = (df_norm["_dt"].dt.year == hoy.year) & (df_norm["_dt"].dt.month == hoy.month)
-        mask_sem = df_norm["_dt"].dt.date >= hace_7_dias
+        valid_dt = df_norm.dropna(subset=["_dt"])
+        mask_hoy = valid_dt["_dt"].dt.date == hoy
+        mask_mes = (valid_dt["_dt"].dt.year == hoy.year) & (valid_dt["_dt"].dt.month == hoy.month)
+        mask_sem = valid_dt["_dt"].dt.date >= hace_7_dias
 
-        venta_hoy = float(df_norm.loc[mask_hoy, "_venta"].sum())
-        kg_hoy = float(df_norm.loc[mask_hoy, "_kg"].sum())
+        venta_hoy = float(valid_dt.loc[mask_hoy, "_venta"].sum())
+        kg_hoy = float(valid_dt.loc[mask_hoy, "_kg"].sum())
 
-        venta_mes = float(df_norm.loc[mask_mes, "_venta"].sum())
-        kg_mes = float(df_norm.loc[mask_mes, "_kg"].sum())
-        util_mes = float(df_norm.loc[mask_mes, "_util"].sum())
-        util_sem = float(df_norm.loc[mask_sem, "_util"].sum())
+        venta_mes = float(valid_dt.loc[mask_mes, "_venta"].sum())
+        kg_mes = float(valid_dt.loc[mask_mes, "_kg"].sum())
+        util_mes = float(valid_dt.loc[mask_mes, "_util"].sum())
+        util_sem = float(valid_dt.loc[mask_sem, "_util"].sum())
     else:
         venta_hoy = kg_hoy = venta_mes = kg_mes = util_mes = util_sem = 0.0
 
