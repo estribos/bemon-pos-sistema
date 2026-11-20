@@ -188,6 +188,7 @@ def run():
     total_kg_nota = 0.0
     total_venta_nota = 0.0
     resumen_partidas = []
+    kilos_por_medida = []
 
     for idx, partida in enumerate(st.session_state.partidas_nota):
         p1, p2, p3, p4 = st.columns([2.0, 1.1, 1.2, 1.2])
@@ -221,21 +222,14 @@ def run():
             "precio_kg": precio_kg_val,
             "importe": imp_val,
         }
-        total_kg_nota += kg_val
-        total_venta_nota += imp_val
+        total_kg_nota = round(total_kg_nota + kg_val, 3)
+        total_venta_nota = round(total_venta_nota + imp_val, 2)
         if kg_val > 0 or imp_val > 0 or med_sel:
-            etiqueta_med = med_sel if med_sel else f"Medida {idx + 1}"
-            detalles = []
-            if kg_val > 0:
-                detalles.append(f"{kg_val:g} kg")
-            if precio_kg_val > 0 and kg_val > 0:
-                detalles.append(f"@ ${precio_kg_val:,.2f}/kg")
-            if imp_val > 0:
-                detalles.append(f"${imp_val:,.2f}")
-            if detalles:
-                resumen_partidas.append(f"{etiqueta_med} ({', '.join(detalles)})")
-            else:
-                resumen_partidas.append(etiqueta_med)
+            etiqueta_med = (med_sel if med_sel else f"Medida {idx + 1}").upper()
+            resumen_partidas.append(etiqueta_med)
+            kilos_por_medida.append(f"{etiqueta_med}={kg_val:g}kg")
+
+    kilos_por_medida_txt = ", ".join(kilos_por_medida)
 
     costo_material_total = total_kg_nota * costo_base_kg
     utilidad_estimada = total_venta_nota - costo_material_total
@@ -243,10 +237,12 @@ def run():
     precio_prom_kg = (total_venta_nota / total_kg_nota) if total_kg_nota > 0 else 0.0
 
     st.info(
-        f"📦 **Total Nota:** {total_kg_nota:,.2f} kg | **Cobro Total:** ${total_venta_nota:,.2f} MXN | "
+        f"📦 **Total Kilos:** {total_kg_nota:,.2f} kg | **Cobro Total:** ${total_venta_nota:,.2f} MXN | "
         f"**Precio prom./kg:** ${precio_prom_kg:,.2f} | **Costo Alambrón (@ ${costo_base_kg:,.2f}/kg):** ${costo_material_total:,.2f} | "
         f"**Utilidad Neta:** ${utilidad_estimada:,.2f} ({margen_porcentaje:.1f}%)"
     )
+    if kilos_por_medida_txt:
+        st.caption(f"⚖️ **Kilos por medida:** {kilos_por_medida_txt}")
 
     if total_venta_nota > 0 and utilidad_estimada < 0:
         st.warning("⚠️ Esta venta arroja **utilidad neta negativa** con el costo de alambrón configurado.")
@@ -281,6 +277,13 @@ def run():
                 st.error(err)
             return
 
+        obs_limpia = nota_extra.strip()
+        obs_final = (
+            f"{obs_limpia} | Kilos por medida: {kilos_por_medida_txt}"
+            if obs_limpia and kilos_por_medida_txt
+            else (f"Kilos por medida: {kilos_por_medida_txt}" if kilos_por_medida_txt else obs_limpia)
+        )
+
         now_dt = datetime.now()
         payload = {
             "Folio": int(folio),
@@ -291,7 +294,8 @@ def run():
             "Metodo_Pago": metodo_pago,
             "Utilidad_Neta": round(float(utilidad_estimada), 2),
             "Medidas": " | ".join(resumen_partidas),
-            "Observaciones": nota_extra.strip(),
+            "Kilos_Por_Medida": kilos_por_medida_txt,
+            "Observaciones": obs_final,
             "Anio": now_dt.year,
             "Mes_Nombre": MESES_ES[now_dt.month],
         }
@@ -322,7 +326,7 @@ def run():
         st.divider()
         st.subheader("🧾 Ventas Registradas en la App")
         df_vista_sesion = pd.DataFrame(st.session_state.ventas_sesion)[
-            ["Folio", "Fecha", "Cliente", "Medidas", "Total_KG", "Total_Venta", "Metodo_Pago", "Utilidad_Neta"]
+            ["Folio", "Fecha", "Cliente", "Medidas", "Kilos_Por_Medida", "Total_KG", "Total_Venta", "Metodo_Pago", "Utilidad_Neta"]
         ]
         st.dataframe(df_vista_sesion, use_container_width=True, hide_index=True)
 
