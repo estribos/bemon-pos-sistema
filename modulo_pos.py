@@ -95,10 +95,26 @@ def run():
 
     if "costo_alambron_kg" not in st.session_state:
         st.session_state.costo_alambron_kg = float(costo_inicial_kg)
+    if "ventas_sesion" not in st.session_state:
+        st.session_state.ventas_sesion = []
 
     df_raw = _cargar_ventas(conn)
     df_norm = _normalizar_ventas(df_raw)
-    folio_sugerido = _obtener_siguiente_folio(df_raw)
+
+    if st.session_state.ventas_sesion:
+        df_sesion = pd.DataFrame(st.session_state.ventas_sesion)
+        df_sesion["_dt"] = pd.to_datetime(df_sesion["Fecha"], errors="coerce")
+        df_sesion["_kg"] = pd.to_numeric(df_sesion["Total_KG"], errors="coerce").fillna(0.0)
+        df_sesion["_venta"] = pd.to_numeric(df_sesion["Total_Venta"], errors="coerce").fillna(0.0)
+        df_sesion["_util"] = pd.to_numeric(df_sesion["Utilidad_Neta"], errors="coerce").fillna(0.0)
+        df_sesion["_medidas"] = df_sesion["Medidas"].fillna("").astype(str)
+        df_norm = pd.concat([df_norm, df_sesion], ignore_index=True)
+
+    folio_sheet = _obtener_siguiente_folio(df_raw)
+    folio_sesion = max(
+        [int(v.get("Folio", 0)) for v in st.session_state.ventas_sesion] + [0]
+    ) + 1
+    folio_sugerido = max(folio_sheet, folio_sesion)
 
     if "ultimo_folio_enviado" not in st.session_state:
         st.session_state.ultimo_folio_enviado = None
@@ -207,7 +223,7 @@ def run():
 
     st.info(
         f"📦 **Total Nota:** {total_kg_nota:,.2f} kg | **Cobro Total:** ${total_venta_nota:,.2f} MXN | "
-        f"**Precio prom./kg:** ${precio_prom_kg:,.2f} | **Costo Alambrón (@ ${costo_base_kg:,.2f}/kg):** ${costo_material_total:,.2f} | "
+        f"**Precio prom./kg:** ${precio_prom_kg:,.2f} | **Costo Alambrón (@ ${costo_base_kg:,.2f}/kg):**${costo_material_total:,.2f} | "
         f"**Utilidad Neta:** ${utilidad_estimada:,.2f} ({margen_porcentaje:.1f}%)"
     )
 
@@ -265,43 +281,4 @@ def run():
                 if response.status_code == 200:
                     data_resp = response.json()
                     if data_resp.get("status") == "ok":
-                        st.session_state.ultimo_folio_enviado = int(folio)
-                        st.session_state.partidas_nota = [
-                            {"medida": "", "kg": 0.0, "importe": 0.0}
-                        ]
-                        st.cache_data.clear()
-                        st.success(f"¡Venta Folio #{int(folio)} registrada y sincronizada con éxito!")
-                        st.rerun()
-                    else:
-                        st.error(f"Apps Script devolvió error: {data_resp.get('message')}")
-                else:
-                    st.error(f"Error al sincronizar con la hoja (HTTP {response.status_code}): {response.text}")
-            except Exception as e:
-                st.error(f"Error de conexión: {e}")
-
-    # --- CONCENTRADO MENSUAL ---
-    st.divider()
-    st.subheader("📅 Concentrado de Ventas Mensuales")
-    if not df_norm.empty and "_dt" in df_norm.columns and df_norm["_dt"].notna().any():
-        valid_df = df_norm.dropna(subset=["_dt"]).copy()
-        valid_df["Año"] = valid_df["_dt"].dt.year
-        valid_df["Mes_Num"] = valid_df["_dt"].dt.month
-        valid_df["Mes"] = valid_df["Mes_Num"].map(MESES_ES)
-
-        mensual = (
-            valid_df.groupby(["Año", "Mes_Num", "Mes"], as_index=False)
-            .agg(
-                Kilos_Vendidos=("_kg", "sum"),
-                Ventas_MXN=("_venta", "sum"),
-                Utilidad_MXN=("_util", "sum"),
-                Notas=("_venta", "count"),
-            )
-            .sort_values(["Año", "Mes_Num"], ascending=[False, False])
-        )
-        mensual_vista = mensual[["Año", "Mes", "Notas", "Kilos_Vendidos", "Ventas_MXN", "Utilidad_MXN"]].copy()
-        mensual_vista["Kilos_Vendidos"] = mensual_vista["Kilos_Vendidos"].map(lambda x: f"{x:,.2f} kg")
-        mensual_vista["Ventas_MXN"] = mensual_vista["Ventas_MXN"].map(lambda x: f"${x:,.2f}")
-        mensual_vista["Utilidad_MXN"] = mensual_vista["Utilidad_MXN"].map(lambda x: f"${x:,.2f}")
-        st.dataframe(mensual_vista, use_container_width=True, hide_index=True)
-    else:
-        st.caption("Aún no hay ventas con fecha válida para mostrar el concentrado mensual.")
+                        st.session_state.ultimo_folio_enviado = int(
