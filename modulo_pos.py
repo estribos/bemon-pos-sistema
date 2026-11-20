@@ -120,9 +120,10 @@ def run():
         st.session_state.ultimo_folio_enviado = None
     if "partidas_nota" not in st.session_state:
         st.session_state.partidas_nota = [
-            {"medida": "", "kg": 0.0, "importe": 0.0}
+            {"medida": "", "kg": 0.0, "precio_kg": 25.0, "importe": 0.0}
         ]
 
+    # --- RESUMEN DIARIO, MENSUAL Y UTILIDAD ---
     hoy = datetime.now().date()
     hace_7_dias = hoy - timedelta(days=7)
 
@@ -154,6 +155,7 @@ def run():
 
     st.divider()
 
+    # --- COSTO DEL KILO DE ALAMBRÓN (AJUSTABLE EN VENTA) ---
     c_costo1, c_costo2 = st.columns([1.5, 3.5])
     costo_base_kg = float(
         c_costo1.number_input(
@@ -171,10 +173,13 @@ def run():
         f"(Sugerido inicial: ${costo_inicial_kg:,.2f}/kg desde {origen_costo})"
     )
 
+    # --- DESGLOSE POR MEDIDA DE LA VENTA ACTUAL ---
     st.subheader("📐 Desglose por Medida de Estribo")
     c_add, c_clr = st.columns([1, 1])
     if c_add.button("➕ Agregar medida"):
-        st.session_state.partidas_nota.append({"medida": "", "kg": 0.0, "importe": 0.0})
+        st.session_state.partidas_nota.append(
+            {"medida": "", "kg": 0.0, "precio_kg": 25.0, "importe": 0.0}
+        )
         st.rerun()
     if len(st.session_state.partidas_nota) > 1 and c_clr.button("🗑️ Quitar última medida"):
         st.session_state.partidas_nota.pop()
@@ -185,7 +190,7 @@ def run():
     resumen_partidas = []
 
     for idx, partida in enumerate(st.session_state.partidas_nota):
-        p1, p2, p3 = st.columns([2.2, 1.4, 1.4])
+        p1, p2, p3, p4 = st.columns([2.0, 1.1, 1.2, 1.2])
         med_sel = p1.text_input(
             f"Medida #{idx + 1}",
             value=str(partida.get("medida", "")),
@@ -195,23 +200,42 @@ def run():
         kg_val = p2.number_input(
             f"Kilos (kg) #{idx + 1}",
             min_value=0.0,
-            value=float(partida["kg"]),
+            value=float(partida.get("kg", 0.0)),
             step=1.0,
             key=f"kg_{idx}",
         )
-        imp_val = p3.number_input(
-            f"Importe ($ MXN) #{idx + 1}",
+        precio_kg_val = p3.number_input(
+            f"Precio/kg ($ MXN) #{idx + 1}",
             min_value=0.0,
-            value=float(partida["importe"]),
-            step=50.0,
-            key=f"imp_{idx}",
+            value=float(partida.get("precio_kg", 25.0)),
+            step=0.50,
+            format="%.2f",
+            key=f"pkg_{idx}",
         )
-        st.session_state.partidas_nota[idx] = {"medida": med_sel, "kg": kg_val, "importe": imp_val}
+        imp_val = round(kg_val * precio_kg_val, 2)
+        p4.metric(f"Importe #{idx + 1}", f"${imp_val:,.2f}")
+
+        st.session_state.partidas_nota[idx] = {
+            "medida": med_sel,
+            "kg": kg_val,
+            "precio_kg": precio_kg_val,
+            "importe": imp_val,
+        }
         total_kg_nota += kg_val
         total_venta_nota += imp_val
         if kg_val > 0 or imp_val > 0 or med_sel:
             etiqueta_med = med_sel if med_sel else f"Medida {idx + 1}"
-            resumen_partidas.append(etiqueta_med)
+            detalles = []
+            if kg_val > 0:
+                detalles.append(f"{kg_val:g} kg")
+            if precio_kg_val > 0 and kg_val > 0:
+                detalles.append(f"@ ${precio_kg_val:,.2f}/kg")
+            if imp_val > 0:
+                detalles.append(f"${imp_val:,.2f}")
+            if detalles:
+                resumen_partidas.append(f"{etiqueta_med} ({', '.join(detalles)})")
+            else:
+                resumen_partidas.append(etiqueta_med)
 
     costo_material_total = total_kg_nota * costo_base_kg
     utilidad_estimada = total_venta_nota - costo_material_total
@@ -227,6 +251,7 @@ def run():
     if total_venta_nota > 0 and utilidad_estimada < 0:
         st.warning("⚠️ Esta venta arroja **utilidad neta negativa** con el costo de alambrón configurado.")
 
+    # --- DATOS DEL CLIENTE Y CONFIRMACIÓN ---
     with st.form("form_pos_venta", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
@@ -280,7 +305,7 @@ def run():
                         st.session_state.ultimo_folio_enviado = int(folio)
                         st.session_state.ventas_sesion.append(payload)
                         st.session_state.partidas_nota = [
-                            {"medida": "", "kg": 0.0, "importe": 0.0}
+                            {"medida": "", "kg": 0.0, "precio_kg": 25.0, "importe": 0.0}
                         ]
                         st.cache_data.clear()
                         st.success(f"¡Venta Folio #{int(folio)} registrada y sincronizada con éxito!")
@@ -292,6 +317,7 @@ def run():
             except Exception as e:
                 st.error(f"Error de conexión: {e}")
 
+    # --- REGISTRO EN LA APP ---
     if st.session_state.ventas_sesion:
         st.divider()
         st.subheader("🧾 Ventas Registradas en la App")
@@ -300,6 +326,7 @@ def run():
         ]
         st.dataframe(df_vista_sesion, use_container_width=True, hide_index=True)
 
+    # --- CONCENTRADO MENSUAL ---
     st.divider()
     st.subheader("📅 Concentrado de Ventas Mensuales")
     if not df_norm.empty and "_dt" in df_norm.columns and df_norm["_dt"].notna().any():
