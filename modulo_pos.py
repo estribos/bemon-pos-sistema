@@ -23,11 +23,26 @@ def _cargar_ventas(conn: GSheetsConnection) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def _parsear_fechas_serie(serie: pd.Series) -> pd.Series:
+    s_str = serie.astype(str).str.strip()
+    s_str = s_str.replace({"": pd.NA, "nan": pd.NA, "NaT": pd.NA, "None": pd.NA})
+
+    # Intento 1: Parseo estándar de ISO / timestamps
+    dt = pd.to_datetime(s_str, errors="coerce")
+
+    # Intento 2: Parseo con formato día primero (DD/MM/YYYY) para las filas que dieron NaT
+    mask_na = dt.isna() & s_str.notna()
+    if mask_na.any():
+        dt.loc[mask_na] = pd.to_datetime(s_str.loc[mask_na], dayfirst=True, errors="coerce")
+
+    return dt
+
+
 def _normalizar_ventas(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
 
-    col_map = {c.lower(): c for c in df.columns}
+    col_map = {c.lower().strip(): c for c in df.columns}
     c_fecha = col_map.get("fecha")
     c_kg = col_map.get("tota_kg") or col_map.get("total_kg")
     c_venta = col_map.get("total_venta")
@@ -35,7 +50,7 @@ def _normalizar_ventas(df: pd.DataFrame) -> pd.DataFrame:
     c_med = col_map.get("medidas") or col_map.get("detalle_medidas")
 
     out = df.copy()
-    out["_dt"] = pd.to_datetime(out[c_fecha], errors="coerce") if c_fecha else pd.NaT
+    out["_dt"] = _parsear_fechas_serie(out[c_fecha]) if c_fecha else pd.NaT
     out["_kg"] = pd.to_numeric(out[c_kg], errors="coerce").fillna(0.0) if c_kg else 0.0
     out["_venta"] = pd.to_numeric(out[c_venta], errors="coerce").fillna(0.0) if c_venta else 0.0
     out["_util"] = pd.to_numeric(out[c_util], errors="coerce").fillna(0.0) if c_util else 0.0
