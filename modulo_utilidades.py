@@ -1,16 +1,28 @@
 import streamlit as st
 import pandas as pd
+import gspread
+from google.oauth2.service_account import Credentials
+
+SPREADSHEET_ID = "13YyF4ZV967z7LhKGevdi49UaO1AX6MamjcDcfxVobO4"
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+
+
+def cargar_ventas():
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"], scopes=SCOPES
+    )
+    client = gspread.authorize(creds)
+    sheet = client.open_by_key(SPREADSHEET_ID).worksheet("Ventas")
+    records = sheet.get_all_records()
+    return pd.DataFrame(records)
 
 
 def run():
     st.header("📊 Dashboard Financiero y Rendimiento")
     st.caption("Resumen en tiempo real de ventas, kilos desplazados y utilidad neta.")
 
-    sheet_id = "13YyF4ZV967z7LhKGevdi49UaO1AX6MamjcDcfxVobO4"
-    url_csv = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=Ventas"
-
     try:
-        df_ventas = pd.read_csv(url_csv)
+        df_ventas = cargar_ventas()
     except Exception as e:
         st.error(f"Error al leer la pestaña 'Ventas': {e}")
         return
