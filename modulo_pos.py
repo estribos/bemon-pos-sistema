@@ -29,7 +29,7 @@ def _normalizar_ventas(df: pd.DataFrame) -> pd.DataFrame:
 
     col_map = {c.lower(): c for c in df.columns}
     c_fecha = col_map.get("fecha")
-    c_kg = col_map.get("tota_kg") or col_map.get("total_kg")
+    c_kg = col_map.get("total_kg") or col_map.get("tota_kg")
     c_venta = col_map.get("total_venta")
     c_util = col_map.get("utilidad_neta")
     c_med = col_map.get("medidas") or col_map.get("detalle_medidas")
@@ -277,25 +277,22 @@ def run():
                 st.error(err)
             return
 
-        obs_limpia = nota_extra.strip()
-        obs_final = (
-            f"{obs_limpia} | Kilos por medida: {kilos_por_medida_txt}"
-            if obs_limpia and kilos_por_medida_txt
-            else (f"Kilos por medida: {kilos_por_medida_txt}" if kilos_por_medida_txt else obs_limpia)
-        )
-
+        obs_final = nota_extra.strip()
         now_dt = datetime.now()
+        # Orden exacto de columnas de la hoja Ventas:
+        # A: folio | B: fecha | C: cliente | D: medidas | E: kilos_por_medida
+        # F: total_kg | G: total_venta | H: utilidad_neta | I: metodo_de_pago | J: observaciones
         payload = {
             "Folio": int(folio),
             "Fecha": now_dt.strftime("%Y-%m-%d %H:%M:%S"),
             "Cliente": cliente_limpio,
             "Medidas": " | ".join(resumen_partidas),
+            "Kilos_Por_Medida": kilos_por_medida_txt,
             "Total_KG": round(float(total_kg_nota), 3),
             "Total_Venta": round(float(total_venta_nota), 2),
-            "Metodo_Pago": metodo_pago,
             "Utilidad_Neta": round(float(utilidad_estimada), 2),
+            "Metodo_Pago": metodo_pago,
             "Observaciones": obs_final,
-            "Kilos_Por_Medida": kilos_por_medida_txt,
             "Anio": now_dt.year,
             "Mes_Nombre": MESES_ES[now_dt.month],
         }
@@ -325,7 +322,7 @@ def run():
     if st.session_state.ventas_sesion:
         st.divider()
         st.subheader("🧾 Ventas Registradas en la App")
-        cols_vista = ["Folio", "Fecha", "Cliente", "Medidas", "Kilos_Por_Medida", "Total_KG", "Total_Venta", "Metodo_Pago", "Utilidad_Neta"]
+        cols_vista = ["Folio", "Fecha", "Cliente", "Medidas", "Kilos_Por_Medida", "Total_KG", "Total_Venta", "Utilidad_Neta", "Metodo_Pago"]
         df_vista_sesion = pd.DataFrame(st.session_state.ventas_sesion).reindex(columns=cols_vista).fillna("")
         st.dataframe(df_vista_sesion, use_container_width=True, hide_index=True)
 
