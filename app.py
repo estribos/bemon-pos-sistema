@@ -7,7 +7,12 @@ st.sidebar.subheader("Navegación")
 
 opcion = st.sidebar.radio(
     "Selecciona un Módulo:",
-    ["📄 Cotizador Oficial", "🛒 Punto de Venta (POS)", "📊 Dashboard Financiero"]
+    [
+        "📄 Cotizador Oficial",
+        "🛒 Punto de Venta (POS)",
+        "📊 Dashboard Financiero",
+        "📦 Compras",
+    ]
 )
 
 if opcion == "📄 Cotizador Oficial":
@@ -21,3 +26,7 @@ elif opcion == "🛒 Punto de Venta (POS)":
 elif opcion == "📊 Dashboard Financiero":
     import modulo_utilidades
     modulo_utilidades.run()
+
+elif opcion == "📦 Compras":
+    import compras
+    compras.run()
