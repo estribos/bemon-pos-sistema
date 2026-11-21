@@ -49,6 +49,3 @@ def run():
         df_mostrar = df_mostrar.sort_values(by="_dt_orden", ascending=False, na_position="last").drop(columns=["_dt_orden"])
 
     st.dataframe(df_mostrar, use_container_width=True)
-```[cite: 1, 2]
-
-Guarda y recarga la página en el navegador para verificar que ya cargan las métricas y la tabla.
