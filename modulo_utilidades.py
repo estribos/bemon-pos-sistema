@@ -1,16 +1,22 @@
 import streamlit as st
 import pandas as pd
+import requests
+
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwVXZNjtT5zvf0MHGIgsdJ-Qm07M2-sOLJhHKeBI_PKXoBAZHhiDUn_Aghwx-YPLV7z/exec"
 
 
 def run():
     st.header("📊 Dashboard Financiero y Rendimiento")
     st.caption("Resumen en tiempo real de ventas, kilos desplazados y utilidad neta.")
 
-    sheet_id = "13YyF4ZV967z7LhKGevdi49UaO1AX6MamjcDcfxVobO4"
-    url_csv = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=Ventas"
-
     try:
-        df_ventas = pd.read_csv(url_csv)
+        resp = requests.get(WEB_APP_URL, timeout=20)
+        resp.raise_for_status()
+        payload = resp.json()
+        if isinstance(payload, dict) and payload.get("error"):
+            st.error(payload["error"])
+            return
+        df_ventas = pd.DataFrame(payload)
     except Exception as e:
         st.error(f"Error al leer la pestaña 'Ventas': {e}")
         return
