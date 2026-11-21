@@ -284,7 +284,7 @@ def run():
         # F: total_kg | G: total_venta | H: utilidad_neta | I: metodo_de_pago | J: observaciones
         payload = {
             "Folio": int(folio),
-            "Fecha": now_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            "Fecha": now_dt.strftime("%Y-%m-%d"),
             "Cliente": cliente_limpio,
             "Medidas": " | ".join(resumen_partidas),
             "Kilos_Por_Medida": kilos_por_medida_txt,
