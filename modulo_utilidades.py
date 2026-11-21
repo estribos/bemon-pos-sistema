@@ -24,6 +24,7 @@ def run():
     c_venta = col_map.get("total_venta")
     c_kg = col_map.get("total_kg") or col_map.get("tota_kg")
     c_util = col_map.get("utilidad_neta")
+    c_fecha = col_map.get("fecha")
 
     if not c_venta or not c_kg or not c_util:
         st.error(
@@ -31,17 +32,28 @@ def run():
         )
         return
 
+    # Limpieza de tipos de datos
     ventas_num = pd.to_numeric(df_ventas[c_venta], errors="coerce").fillna(0.0)
     kg_num = pd.to_numeric(df_ventas[c_kg], errors="coerce").fillna(0.0)
     util_num = pd.to_numeric(df_ventas[c_util], errors="coerce").fillna(0.0)
+
+    # Tarjetas ejecutivas
+    col1, col2, col3 = st.columns(3)
 
     total_ingresos = float(ventas_num.sum())
     total_kilos = float(kg_num.sum())
     total_utilidad = float(util_num.sum())
 
-    col1, col2, col3 = st.columns(3)
     col1.metric("💰 Ventas Totales", f"${total_ingresos:,.2f} MXN")
     col2.metric("🏗️ Volumen Desplazado", f"{total_kilos:,.2f} KG")
     col3.metric("📈 Utilidad Neta Acumulada", f"${total_utilidad:,.2f} MXN")
 
-    
+    st.markdown("---")
+    st.subheader("📋 Historial Completo de Ventas (Sincronizado PC y Celular)")
+
+    df_mostrar = df_ventas.copy()
+    if c_fecha:
+        df_mostrar["_dt_orden"] = pd.to_datetime(df_mostrar[c_fecha], errors="coerce")
+        df_mostrar = df_mostrar.sort_values(by="_dt_orden", ascending=False, na_position="last").drop(columns=["_dt_orden"])
+
+    st.dataframe(df_mostrar, use_container_width=True)
