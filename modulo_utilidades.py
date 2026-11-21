@@ -1,15 +1,16 @@
 import streamlit as st
 import pandas as pd
-from streamlit_gsheets import GSheetsConnection
 
 
 def run():
     st.header("📊 Dashboard Financiero y Rendimiento")
     st.caption("Resumen en tiempo real de ventas, kilos desplazados y utilidad neta.")
 
-    conn = st.connection("gsheets", type=GSheetsConnection)
+    sheet_id = "13YyF4ZV967z7LhKGevdi49UaO1AX6MamjcDcfxVobO4"
+    url_csv = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=Ventas"
+
     try:
-        df_ventas = conn.read(worksheet="Ventas", ttl=0)
+        df_ventas = pd.read_csv(url_csv)
     except Exception as e:
         st.error(f"Error al leer la pestaña 'Ventas': {e}")
         return
@@ -27,26 +28,17 @@ def run():
     c_fecha = col_map.get("fecha")
 
     if not c_venta or not c_kg or not c_util:
-        st.error(
-            f"Faltan columnas esperadas en 'Ventas'. Columnas detectadas: {list(df_ventas.columns)}"
-        )
+        st.error(f"Faltan columnas esperadas en 'Ventas'. Columnas detectadas: {list(df_ventas.columns)}")
         return
 
-    # Limpieza de tipos de datos
     ventas_num = pd.to_numeric(df_ventas[c_venta], errors="coerce").fillna(0.0)
     kg_num = pd.to_numeric(df_ventas[c_kg], errors="coerce").fillna(0.0)
     util_num = pd.to_numeric(df_ventas[c_util], errors="coerce").fillna(0.0)
 
-    # Tarjetas ejecutivas
     col1, col2, col3 = st.columns(3)
-
-    total_ingresos = float(ventas_num.sum())
-    total_kilos = float(kg_num.sum())
-    total_utilidad = float(util_num.sum())
-
-    col1.metric("💰 Ventas Totales", f"${total_ingresos:,.2f} MXN")
-    col2.metric("🏗️ Volumen Desplazado", f"{total_kilos:,.2f} KG")
-    col3.metric("📈 Utilidad Neta Acumulada", f"${total_utilidad:,.2f} MXN")
+    col1.metric("💰 Ventas Totales", f"${float(ventas_num.sum()):,.2f} MXN")
+    col2.metric("🏗️ Volumen Desplazado", f"{float(kg_num.sum()):,.2f} KG")
+    col3.metric("📈 Utilidad Neta Acumulada", f"${float(util_num.sum()):,.2f} MXN")
 
     st.markdown("---")
     st.subheader("📋 Historial Completo de Ventas (Sincronizado PC y Celular)")
@@ -57,3 +49,6 @@ def run():
         df_mostrar = df_mostrar.sort_values(by="_dt_orden", ascending=False, na_position="last").drop(columns=["_dt_orden"])
 
     st.dataframe(df_mostrar, use_container_width=True)
+```[cite: 1, 2]
+
+Guarda y recarga la página en el navegador para verificar que ya cargan las métricas y la tabla.
