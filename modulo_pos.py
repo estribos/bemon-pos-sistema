@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from streamlit_gsheets import GSheetsConnection
 import requests
 
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxyvCqXHty8sDqo1bAb6fvFFlcNDrPTdRJkFtSBCT2bdosXn0p-0FVDMPzSmwI1qk4H/exec"
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyXB8fAsvSVI7gBWkhS6mtks1zPSq_WQs3Rs_wIPoPu_fU-8eLEr7YPnD5mj2ENfJxm/exec"
 MESES_ES = {
     1: "ENERO", 2: "FEBRERO", 3: "MARZO", 4: "ABRIL",
     5: "MAYO", 6: "JUNIO", 7: "JULIO", 8: "AGOSTO",
