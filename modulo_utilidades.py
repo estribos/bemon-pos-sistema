@@ -2,9 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwVXZNjtT5zvf0MHGIgsdJ-Qm07M2-sOLJhHKeBI_PKXoBAZHhiDUn_Aghwx-YPLV7z/exec"
-
-
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxyvCqXHty8sDqo1bAb6fvFFlcNDrPTdRJkFtSBCT2bdosXn0p-0FVDMPzSmwI1qk4H/exec"
 def run():
     st.header("📊 Dashboard Financiero y Rendimiento")
     st.caption("Resumen en tiempo real de ventas, kilos desplazados y utilidad neta.")
