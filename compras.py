@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
-WEB_APP_URL = "TU_URL_EXEC_ACTUALIZADA"
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyXB8fAsvSVI7gBWkhS6mtks1zPSq_WQs3Rs_wIPoPu_fU-8eLEr7YPnD5mj2ENfJxm/exec"
 
 
 def guardar_compra(payload: dict):
